@@ -71,6 +71,116 @@ Install and configure the Radxa component before testing the complete integratio
 
 ## Installation
 
+
+
+
+## Firmware Calibration Synchronization
+
+The API Server supports automatic synchronization of firmware calibration files between the Creator 5 and a remote Klipper host (Raspberry Pi / Radxa).
+
+Synchronization is performed automatically before every SoC / Tunneled mode transition.
+
+### Installation Option
+
+During API Server installation, the installer asks:
+
+```text
+Do you want to synchronize calibrations on every SoC <-> Tunneled mode switch? (y/N)
+```
+
+- `y`: enables firmware calibration synchronization.
+- `n` or Enter: leaves synchronization disabled.
+
+The setting is stored in:
+
+```text
+/usr/data/opencreator/api-server.json
+```
+
+Example configuration with synchronization enabled:
+
+```json
+{
+    "remote_host": "192.168.1.197",
+    "sync_firmware_res": true
+}
+```
+
+For existing installations where `sync_firmware_res` is missing, synchronization remains disabled by default.
+
+The setting can also be changed manually:
+
+```json
+"sync_firmware_res": true
+```
+
+Set it to `false` to disable synchronization.
+
+### Synchronized Files
+
+The Creator 5 calibration directory is:
+
+```text
+/usr/data/firmwareRes/config/
+```
+
+The following files are synchronized:
+
+- `extruder.json`
+- `zoffset.json`
+
+`test.json` is intentionally excluded.
+
+### Synchronization Logic
+
+The Creator 5 API Server coordinates synchronization by comparing the modification timestamps of each file on both devices.
+
+For each file:
+
+- If it exists only on the Creator 5, it is copied to the remote host.
+- If it exists only on the remote host, it is copied to the Creator 5.
+- If both devices have the file, the newest version takes precedence.
+- If timestamps and contents are identical, no transfer is performed.
+- If timestamps are identical but contents differ, a conflict is reported and neither file is overwritten.
+
+Additional guarantees:
+
+- Original file modification timestamps are preserved.
+- File replacement is atomic.
+- Each calibration file is evaluated independently.
+- No synchronization occurs when the feature is disabled.
+
+### Mode Transition Integration
+
+Calibration synchronization is integrated into the existing mode-switch sequence, alongside toolchange and nozzle usage synchronization.
+
+It runs before both transitions:
+
+- SoC → Tunneled
+- Tunneled → SoC
+
+The Creator 5 remains the synchronization coordinator. It determines which version is newer and controls the transfer direction.
+
+### Remote Host Requirements
+
+The remote host must have the updated `klipper-mode-monitor` service installed.
+
+The monitor provides the following HTTP endpoints:
+
+```text
+GET  /api/firmware_res
+POST /api/firmware_res
+```
+
+Repository:
+
+https://github.com/pappicio/Raspberry-C5-klipper_mode_monitor
+
+Both the Creator 5 API Server and the remote Mode Monitor must support firmware calibration synchronization.
+
+
+
+
 Install the API Server plugin on the Creator 5 using the OpenCreator plugin installation mechanism.
 
 The installer:
