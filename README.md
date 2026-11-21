@@ -4,6 +4,42 @@ API Server is the Creator 5 component of the Creator 5 / Radxa ZERO 3W Klipper m
 
 It provides the HTTP API used to switch between Creator 5 SoC mode and Tunneled mode, synchronize printer data, and redirect the browser to the active Klipper interface.
 
+
+
+Companion Project — Mode Monitor
+
+The OpenCreator API Server is designed to work together with Raspberry-C5-klipper_mode_monitor, installed on a Raspberry Pi, Radxa ZERO 3W, or another compatible Linux host running Klipper.
+
+Repository:
+
+https://github.com/pappicio/Raspberry-C5-klipper_mode_monitor
+
+Both components are required for the complete Creator 5 / remote host integration.
+
+How the two components work together
+
+API Server (Creator 5): Handles mode switching between SoC and Tunneled, coordinates synchronization, provides the printer-side API, and manages the transition and redirection process.
+
+Mode Monitor (Remote Host): Provides remote monitoring and HTTP endpoints, stores and synchronizes toolchange counters and nozzle usage data, and sends remote SoC temperature information to the Creator 5.
+
+The two components communicate over the network using HTTP APIs.
+
+Installation requirements
+
+Install and configure Script Runner on the Creator 5.
+
+Install Mode Monitor on the Raspberry Pi or compatible remote Linux host.
+
+Install API Server on the Creator 5.
+
+Configure the correct IP addresses during installation.
+
+Both components must be running and reachable for mode switching and data synchronization to work correctly.
+
+
+
+
+
 ## Architecture
 
 The integration consists of two components:
