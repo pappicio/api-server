@@ -174,6 +174,54 @@ with open(navi_path, "w") as f:
 print("[API Server] Navigation entry configured:", entry["href"])
 PY
 
+
+printf "[API Server] Do you want to synchronize calibrations on every SoC <-> Tunneled mode switch? (y/N): " > /dev/tty
+if ! read -r SYNC_FIRMWARE_RES < /dev/tty; then
+    echo "[API Server] ERROR: Unable to read calibration sync choice."
+    exit 1
+fi
+
+case "$SYNC_FIRMWARE_RES" in
+    y|Y|yes|YES|Yes) SYNC_FIRMWARE_RES_VALUE=true ;;
+    n|N|no|NO|No|"") SYNC_FIRMWARE_RES_VALUE=false ;;
+    *)
+        echo "[API Server] ERROR: Please answer yes or no."
+        exit 1
+        ;;
+esac
+
+SYNC_FIRMWARE_RES_VALUE="$SYNC_FIRMWARE_RES_VALUE" CONFIG="$CONFIG" "$PYTHON" <<'PY'
+import os
+import json
+import shutil
+from datetime import datetime
+
+config_path = os.environ["CONFIG"]
+value = os.environ["SYNC_FIRMWARE_RES_VALUE"] == "true"
+
+try:
+    with open(config_path, "r") as file:
+        config = json.load(file)
+except FileNotFoundError:
+    config = {}
+
+if not isinstance(config, dict):
+    raise SystemExit("[API Server] ERROR: API config must be a JSON object.")
+
+if os.path.isfile(config_path):
+    suffix = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup_path = config_path + ".bak." + suffix
+    shutil.copy2(config_path, backup_path)
+    print("[API Server] Config backup:", backup_path)
+
+config["sync_firmware_res"] = value
+with open(config_path, "w") as file:
+    json.dump(config, file, indent=4)
+    file.write("\n")
+
+print("[API Server] Firmware calibration sync:", "enabled" if value else "disabled")
+PY
+
 mkdir -p "$SCRIPTS_DIR"
 cp "$SOURCE" "$DEST"
 

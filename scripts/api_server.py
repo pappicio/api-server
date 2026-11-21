@@ -40,7 +40,7 @@ try:
             with open(API_CONFIG_FILE, "r") as f:
                 API_CONFIG = json.load(f)
 
-        API_CONFIG["radxa_host"] = RADXA_HOST
+        API_CONFIG["remote_host"] = RADXA_HOST
         with open(API_CONFIG_FILE, "w") as f:
             json.dump(API_CONFIG, f, indent=4)
             f.write("\n")
@@ -48,13 +48,15 @@ try:
     elif RUNNER_MODE == "soc":
         with open(API_CONFIG_FILE, "r") as f:
             API_CONFIG = json.load(f)
-        RADXA_HOST = str(ipaddress.IPv4Address(API_CONFIG["radxa_host"]))
+        RADXA_HOST = str(ipaddress.IPv4Address(API_CONFIG["remote_host"]))
 
     else:
         raise ValueError("OC_RUNNER_MODE assente o non valido: %s" % RUNNER_MODE)
 
 except Exception as e:
     raise RuntimeError("Configurazione API Server non valida (modalità %s): %s" % (RUNNER_MODE, e))
+
+SYNC_FIRMWARE_RES = API_CONFIG.get("sync_firmware_res", False) is True
 
 
 def get_creator_ip():
@@ -88,6 +90,10 @@ MAX_TOOLCHANGES_SIZE = 4096
 # Nozzle lifetime synchronization
 NOZZLE_HOURS_FILE = "/usr/data/opencreator/klipper/config/c5_misc_variables.cfg"
 RADXA_NOZZLE_HOURS_URL = "http://%s:8765/api/nozzle_hours" % RADXA_HOST
+RADXA_FIRMWARE_RES_URL = "http://%s:8765/api/firmware_res" % RADXA_HOST
+FIRMWARE_RES_FILES = ("extruder.json", "zoffset.json")
+FIRMWARE_RES_TIMEOUT = 15
+MAX_FIRMWARE_RES_SIZE = 1024 * 1024
 NOZZLE_HOURS_TIMEOUT = 10
 NOZZLE_HOURS_KEYS = tuple("nozzle_seconds_t%d" % i for i in range(4))
 
@@ -627,6 +633,163 @@ def get_mode():
     return mode
 
 
+
+def atomic_write_firmware_res(path, content, mtime_ns):
+
+    if len(content) > MAX_FIRMWARE_RES_SIZE:
+        raise ValueError("File calibrazione troppo grande: " + path)
+
+    directory = os.path.dirname(path)
+    old_info = os.stat(path) if os.path.isfile(path) else None
+
+    fd, temporary_path = tempfile.mkstemp(
+        prefix=".firmware-res-",
+        suffix=".tmp",
+        dir=directory
+    )
+
+    try:
+        mode = stat.S_IMODE(old_info.st_mode) if old_info else 0o644
+        os.fchmod(fd, mode)
+
+        with os.fdopen(fd, "wb") as file:
+            file.write(content)
+            file.flush()
+            os.fsync(file.fileno())
+
+        if old_info:
+            os.chown(temporary_path, old_info.st_uid, old_info.st_gid)
+            atime_ns = old_info.st_atime_ns
+            shutil.copy2(path, path + ".bak")
+        else:
+            atime_ns = mtime_ns
+
+        os.utime(temporary_path, ns=(atime_ns, mtime_ns))
+        os.replace(temporary_path, path)
+        temporary_path = None
+
+        directory_fd = os.open(directory, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+
+    finally:
+        if temporary_path and os.path.exists(temporary_path):
+            os.unlink(temporary_path)
+
+
+def sync_firmware_res(target):
+
+    if not SYNC_FIRMWARE_RES:
+        return
+
+    import base64
+
+    request = urllib.request.Request(
+        RADXA_FIRMWARE_RES_URL,
+        headers={"Cache-Control": "no-cache"}
+    )
+
+    with urllib.request.urlopen(request, timeout=FIRMWARE_RES_TIMEOUT) as response:
+        remote_result = json.loads(response.read().decode("utf-8"))
+
+    if not remote_result.get("success"):
+        raise RuntimeError("Il Radxa non ha restituito i file firmwareRes")
+
+    remote_files = remote_result.get("files")
+    if not isinstance(remote_files, dict):
+        raise ValueError("Risposta firmwareRes del Radxa non valida")
+
+    for filename in FIRMWARE_RES_FILES:
+        local_path = os.path.join(CONFIG_DIR, filename)
+        local_exists = os.path.isfile(local_path)
+        remote_info = remote_files.get(filename)
+
+        if not isinstance(remote_info, dict):
+            raise ValueError("Metadati remoti mancanti per " + filename)
+
+        remote_exists = remote_info.get("exists") is True
+        local_content = None
+        local_mtime_ns = None
+        remote_content = None
+        remote_mtime_ns = None
+
+        if local_exists:
+            local_stat = os.stat(local_path)
+            local_mtime_ns = local_stat.st_mtime_ns
+            with open(local_path, "rb") as file:
+                local_content = file.read(MAX_FIRMWARE_RES_SIZE + 1)
+            if len(local_content) > MAX_FIRMWARE_RES_SIZE:
+                raise ValueError("File locale troppo grande: " + filename)
+
+        if remote_exists:
+            remote_mtime_ns = remote_info.get("mtime_ns")
+            if type(remote_mtime_ns) is not int or remote_mtime_ns < 0:
+                raise ValueError("Timestamp remoto non valido: " + filename)
+
+            remote_content = base64.b64decode(
+                remote_info.get("data", ""),
+                validate=True
+            )
+            if len(remote_content) > MAX_FIRMWARE_RES_SIZE:
+                raise ValueError("File remoto troppo grande: " + filename)
+
+        if not local_exists and not remote_exists:
+            print("[API] firmwareRes: %s assente su entrambi, ignorato" % filename, flush=True)
+            continue
+
+        if local_exists and remote_exists:
+            if local_content == remote_content:
+                print("[API] firmwareRes: %s già identico" % filename, flush=True)
+                continue
+
+            if local_mtime_ns == remote_mtime_ns:
+                raise RuntimeError(
+                    "Conflitto firmwareRes: %s ha contenuti diversi e timestamp uguali" % filename
+                )
+
+            local_is_newer = local_mtime_ns > remote_mtime_ns
+        else:
+            local_is_newer = local_exists
+
+        if local_is_newer:
+            payload = json.dumps({
+                "filename": filename,
+                "mtime_ns": local_mtime_ns,
+                "data": base64.b64encode(local_content).decode("ascii")
+            }).encode("utf-8")
+
+            upload = urllib.request.Request(
+                RADXA_FIRMWARE_RES_URL,
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
+
+            with urllib.request.urlopen(upload, timeout=FIRMWARE_RES_TIMEOUT) as response:
+                result = json.loads(response.read().decode("utf-8"))
+
+            if not result.get("success"):
+                raise RuntimeError("Il Radxa non ha confermato " + filename)
+
+            direction = "Creator -> Radxa"
+
+        else:
+            atomic_write_firmware_res(
+                local_path,
+                remote_content,
+                remote_mtime_ns
+            )
+            direction = "Radxa -> Creator"
+
+        print(
+            "[API] firmwareRes sincronizzato: %s (%s)" % (filename, direction),
+            flush=True
+        )
+
+
+
 def change_mode(target):
 
     if target not in ("tunneled", "soc"):
@@ -644,6 +807,7 @@ def change_mode(target):
     # Any transfer or validation error aborts the mode switch and reboot.
     sync_toolchanges(target)
     sync_nozzle_hours(target)
+    sync_firmware_res(target)
 
     # Set permissions first, then reconcile mode markers.
     os.chmod(
