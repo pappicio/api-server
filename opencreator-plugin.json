@@ -2,7 +2,7 @@
   "id": "api-server",
   "name": "API Server",
   "version": "1.0.0",
-  "description": "Requires Script Runner. Install Script Runner first. May degrade system performance. Support will not be provided unless running under tunneled. Provides API endpoints for Creator 5 and Radxa synchronization.",
+  "description": "Requires Script Runner on Creator 5 and Mode Monitor installed on the Raspberry Pi or a compatible remote Linux host. Install both prerequisites first. May degrade system performance. Support will not be provided unless running under tunneled. Provides API endpoints for synchronization between Creator 5 and the remote host.",
   "scripts": {
     "install": "install.sh",
     "update": "update.sh",
