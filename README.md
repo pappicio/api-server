@@ -201,7 +201,7 @@ The Creator 5 API configuration is stored in:
 Example configuration:
 
     {
-        "radxa_host": "192.168.1.197"
+        "remote_host": "192.168.1.197"
     }
 
 The installer writes the Radxa address supplied during installation.
@@ -265,7 +265,7 @@ Check that TCP port 8765 is reachable on the Creator 5.
 
 Check connectivity between the Creator 5 and Radxa.
 
-Verify the radxa_host value in api-server.json and confirm that the Radxa monitor is running on port 8765.
+Verify the remote_host value in api-server.json and confirm that the Radxa monitor is running on port 8765.
 
 A synchronization or validation error prevents the mode transition from continuing.
 
