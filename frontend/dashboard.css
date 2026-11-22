@@ -1,0 +1,394 @@
+.oc-content {
+    padding: 12px 18px 24px;
+}
+
+.oc-section {
+    margin: 8px 0 18px;
+}
+
+.oc-section h3 {
+    margin: 0 0 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #ffffff25;
+    color: #93c5fd;
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+}
+
+.oc-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 5px 0;
+    border-bottom: 1px solid #ffffff0c;
+}
+
+.oc-label {
+    color: #aebaca;
+    overflow-wrap: anywhere;
+}
+
+.oc-value {
+    text-align: right;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.oc-good { color: #4ade80; }
+.oc-bad { color: #f87171; }
+.oc-warning { color: #fbbf24; }
+
+.oc-loading,
+.oc-error {
+    padding: 15px 0;
+}
+
+.oc-error { color: #f87171; }
+
+.oc-footer {
+    margin-top: 20px;
+    color: #94a3b8;
+    font-size: 11px;
+    text-align: center;
+}
+
+
+/* Community Projects */
+.oc-project-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin: 8px 0;
+}
+
+.oc-project-check {
+    border: 1px solid #64748b;
+    border-radius: 6px;
+    padding: 6px 10px;
+    background: #26364a;
+    color: #e5e7eb;
+    cursor: pointer;
+    font: inherit;
+}
+
+.oc-project-check:disabled {
+    opacity: .6;
+    cursor: wait;
+}
+
+.oc-project-card {
+    margin: 10px 0;
+    padding: 12px;
+    border: 1px solid #ffffff20;
+    border-radius: 8px;
+    background: #ffffff08;
+}
+
+.oc-project-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.oc-project-name {
+    font-size: 14px;
+    overflow-wrap: anywhere;
+}
+
+.oc-project-status {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.oc-project-description {
+    margin: 7px 0;
+    color: #cbd5e1;
+}
+
+.oc-project-meta,
+.oc-project-commits {
+    margin-top: 7px;
+    color: #94a3b8;
+    font-size: 11px;
+    overflow-wrap: anywhere;
+}
+
+.oc-project-components {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 9px;
+}
+
+.oc-project-component {
+    padding: 3px 7px;
+    border-radius: 5px;
+    background: #334155;
+    color: #e2e8f0;
+    font-size: 11px;
+}
+
+.oc-project-link {
+    display: inline-block;
+    margin-top: 10px;
+    color: #93c5fd;
+    text-decoration: none;
+}
+
+.oc-project-link:hover {
+    text-decoration: underline;
+}
+
+.oc-project-warning {
+    margin: 7px 0 0;
+    color: #fbbf24;
+    font-size: 11px;
+}
+
+.oc-project-empty {
+    color: #94a3b8;
+    font-size: 12px;
+}
+
+
+/* Dashboard controls */
+.oc-control-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.oc-control-button {
+    border: 1px solid #64748b;
+    border-radius: 6px;
+    padding: 8px 11px;
+    background: #26364a;
+    color: #e5e7eb;
+    cursor: pointer;
+    font: inherit;
+}
+
+.oc-control-button:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+}
+
+
+/* Data synchronization */
+.oc-sync-card {
+    border: 1px solid var(--oc-border, #374151);
+    border-radius: 9px;
+    padding: 12px;
+    margin: 10px 0;
+    background: var(--oc-card-bg, rgba(255,255,255,0.025));
+    min-width: 0;
+}
+
+.oc-sync-card h4 {
+    margin: 0 0 10px;
+    font-size: 14px;
+    font-weight: 650;
+}
+
+.oc-sync-card .oc-row {
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.oc-sync-card .oc-label {
+    flex: 0 0 105px;
+}
+
+.oc-sync-card .oc-value {
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.oc-sync-button {
+    display: block;
+    margin: 12px 0 0 auto;
+    border: 0;
+    border-radius: 6px;
+    padding: 8px 18px;
+    background: #2563eb;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.oc-sync-button:disabled {
+    opacity: .6;
+    cursor: wait;
+}
+
+.oc-sync-note {
+    margin: 8px 0 0;
+    color: #fbbf24;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+
+/* Full-width dashboard layout */
+html, body {
+    margin: 0;
+    min-height: 100%;
+    width: 100%;
+}
+
+body {
+    box-sizing: border-box;
+    background: var(--oc-bg, #18212e);
+    color: var(--oc-fg, #e5e7eb);
+    font: 13px/1.45 sans-serif;
+}
+
+.oc-panel {
+    display: block;
+    position: static;
+    width: 100%;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+    background: transparent;
+    box-shadow: none;
+}
+
+.oc-content {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    align-items: start;
+    gap: 16px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 18px;
+}
+
+.oc-section {
+    min-width: 0;
+    margin: 0;
+}
+
+#oc-printer {
+    grid-column: 1;
+}
+
+#oc-synchronization {
+    grid-column: 2 / 4;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+    gap: 0 12px;
+}
+
+#oc-synchronization > h3 {
+    grid-column: 1 / -1;
+}
+
+#oc-temperatures {
+    grid-column: 1;
+}
+
+#oc-mcus {
+    grid-column: 2;
+}
+
+#oc-plugins {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+    gap: 0 12px;
+}
+
+#oc-plugins > h3,
+#oc-plugins > .oc-project-toolbar,
+#oc-plugins > .oc-project-empty {
+    grid-column: 1 / -1;
+}
+
+.oc-sync-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.oc-sync-button {
+    margin: 12px 0 0;
+}
+
+.oc-footer {
+    grid-column: 1 / -1;
+}
+
+@media (max-width: 1100px) {
+    .oc-content {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    #oc-synchronization {
+        grid-column: 1 / -1;
+    }
+
+    #oc-temperatures {
+        grid-column: 1;
+    }
+
+    #oc-mcus {
+        grid-column: 2;
+    }
+}
+
+@media (max-width: 700px) {
+    .oc-content {
+        grid-template-columns: minmax(0, 1fr) !important;
+        padding: 12px;
+        gap: 14px;
+    }
+
+    #oc-printer,
+    #oc-synchronization,
+    #oc-temperatures,
+    #oc-mcus,
+    #oc-plugins {
+        grid-column: 1;
+        display: block;
+    }
+}
+
+
+/* Dashboard readability improvements */
+.oc-section h3 { font-size: 14px; }
+.oc-row { font-size: 14px; }
+.oc-label, .oc-value { font-size: 15px; }
+.oc-control-button, .oc-sync-button, .oc-project-check {
+    font-size: 15px;
+    padding: 9px 14px;
+}
+.oc-sync-card h4 { font-size: 15px; }
+.oc-sync-note { font-size: 13px; }
+.oc-project-name { font-size: 16px; }
+.oc-project-status { font-size: 14px; }
+.oc-project-description { font-size: 14px; }
+.oc-project-meta, .oc-project-commits { font-size: 13px; }
+.oc-project-component { font-size: 13px; }
+.oc-project-warning, .oc-project-empty { font-size: 13px; }
+.oc-project-link { font-size: 14px; }
+
+
+/* Nozzle Hours label layout */
+.oc-nozzle-hours-row .oc-label {
+    flex: 1 1 0;
+    min-width: 0;
+    white-space: nowrap;
+}
+.oc-nozzle-hours-row .oc-value {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}

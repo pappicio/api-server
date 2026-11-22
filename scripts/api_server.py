@@ -30,45 +30,63 @@ PORT = 8765
 API_CONFIG_FILE = "/usr/data/opencreator/api-server.json"
 RUNNER_MODE = os.environ.get("OC_RUNNER_MODE", "").strip().lower()
 
+API_CONFIG = {}
 try:
-    if RUNNER_MODE == "tunneled":
-        RUNNER_RADXA_HOST = os.environ.get("OC_MOONRAKER_IP", "").strip()
-        RADXA_HOST = str(ipaddress.IPv4Address(RUNNER_RADXA_HOST))
-
-        API_CONFIG = {}
-        if os.path.isfile(API_CONFIG_FILE):
-            with open(API_CONFIG_FILE, "r") as f:
-                API_CONFIG = json.load(f)
-
-        API_CONFIG["remote_host"] = RADXA_HOST
-        with open(API_CONFIG_FILE, "w") as f:
-            json.dump(API_CONFIG, f, indent=4)
-            f.write("\n")
-
-    elif RUNNER_MODE == "soc":
+    if os.path.isfile(API_CONFIG_FILE):
         with open(API_CONFIG_FILE, "r") as f:
-            API_CONFIG = json.load(f)
-        RADXA_HOST = str(ipaddress.IPv4Address(API_CONFIG["remote_host"]))
-
-    else:
-        raise ValueError("OC_RUNNER_MODE assente o non valido: %s" % RUNNER_MODE)
-
+            loaded_config = json.load(f)
+        if isinstance(loaded_config, dict):
+            API_CONFIG = loaded_config
 except Exception as e:
-    raise RuntimeError("Configurazione API Server non valida (modalità %s): %s" % (RUNNER_MODE, e))
+    print("[API] Optional configuration unavailable: %s" % e, flush=True)
+
+REMOTE_CANDIDATE = API_CONFIG.get("remote_host")
+
+if RUNNER_MODE == "tunneled":
+    runner_host = os.environ.get("OC_MOONRAKER_IP", "").strip()
+    if runner_host:
+        REMOTE_CANDIDATE = runner_host
+
+RADXA_HOST = None
+if REMOTE_CANDIDATE:
+    try:
+        RADXA_HOST = str(ipaddress.IPv4Address(REMOTE_CANDIDATE))
+    except (ValueError, ipaddress.AddressValueError):
+        RADXA_HOST = None
 
 SYNC_FIRMWARE_RES = API_CONFIG.get("sync_firmware_res", False) is True
 
-
 def get_creator_ip():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        sock.connect((RADXA_HOST, 8765))
-        return sock.getsockname()[0]
-    finally:
-        sock.close()
+    targets = []
+    if RADXA_HOST:
+        targets.append((RADXA_HOST, 8765))
+    targets.append(("1.1.1.1", 80))
 
+    for target in targets:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.connect(target)
+            return sock.getsockname()[0]
+        except OSError:
+            pass
+        finally:
+            sock.close()
+
+    return "127.0.0.1"
 
 CREATOR_HOST = get_creator_ip()
+
+def remote_host_available(timeout=2):
+    if not RADXA_HOST:
+        return False
+    try:
+        conn = socket.create_connection((RADXA_HOST, 8765), timeout=timeout)
+        conn.close()
+        return True
+    except OSError:
+        return False
+
+REMOTE_HOST_ONLINE = remote_host_available()
 
 BASE_DIR = "/usr/data/opencreator"
 CONFIG_DIR = "/usr/data/firmwareRes/config"
@@ -83,14 +101,14 @@ MESH_FILE = os.path.join(CONFIG_DIR, "levelData")
 
 # Toolchange lifetime counter synchronization
 TOOLCHANGES_FILE = "/usr/data/opencreator/klipper/config/toolchanges.txt"
-RADXA_TOOLCHANGES_URL = "http://%s:8765/api/toolchanges" % RADXA_HOST
+RADXA_TOOLCHANGES_URL = ("http://%s:8765/api/toolchanges" % RADXA_HOST) if RADXA_HOST else None
 TOOLCHANGES_TIMEOUT = 10
 MAX_TOOLCHANGES_SIZE = 4096
 
 # Nozzle lifetime synchronization
 NOZZLE_HOURS_FILE = "/usr/data/opencreator/klipper/config/c5_misc_variables.cfg"
-RADXA_NOZZLE_HOURS_URL = "http://%s:8765/api/nozzle_hours" % RADXA_HOST
-RADXA_FIRMWARE_RES_URL = "http://%s:8765/api/firmware_res" % RADXA_HOST
+RADXA_NOZZLE_HOURS_URL = ("http://%s:8765/api/nozzle_hours" % RADXA_HOST) if RADXA_HOST else None
+RADXA_FIRMWARE_RES_URL = ("http://%s:8765/api/firmware_res" % RADXA_HOST) if RADXA_HOST else None
 FIRMWARE_RES_FILES = ("extruder.json", "zoffset.json")
 FIRMWARE_RES_TIMEOUT = 15
 MAX_FIRMWARE_RES_SIZE = 1024 * 1024
@@ -104,14 +122,44 @@ RADXA_TEMP_FILE = "/tmp/radxa_soc_temp"
 
 # Authorized clients
 
-ALLOWED_IPS = {
-    RADXA_HOST,
-    "127.0.0.1",
-}
+ALLOWED_IPS = {"127.0.0.1"}
 
-ALLOWED_NETWORKS = (
-    str(ipaddress.ip_network(RADXA_HOST + "/24", strict=False)),
-)
+if RADXA_HOST:
+    ALLOWED_IPS.add(RADXA_HOST)
+
+if CREATOR_HOST and CREATOR_HOST != "127.0.0.1":
+    ALLOWED_IPS.add(CREATOR_HOST)
+
+ALLOWED_NETWORKS_LIST = []
+
+try:
+    if CREATOR_HOST and CREATOR_HOST != "127.0.0.1":
+        import subprocess
+
+        interfaces = subprocess.check_output(
+            ["ip", "-o", "-f", "inet", "addr", "show"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            timeout=3,
+        )
+
+        for line in interfaces.splitlines():
+            fields = line.split()
+            if "inet" not in fields:
+                continue
+
+            address = fields[fields.index("inet") + 1]
+            interface = ipaddress.ip_interface(address)
+
+            if interface.ip == ipaddress.ip_address(CREATOR_HOST):
+                network = str(interface.network)
+                if network not in ALLOWED_NETWORKS_LIST:
+                    ALLOWED_NETWORKS_LIST.append(network)
+
+except Exception as e:
+    print("[API] Unable to detect local LAN subnet: %s" % e, flush=True)
+
+ALLOWED_NETWORKS = tuple(ALLOWED_NETWORKS_LIST)
 
 
 # JSON files exposed by the API
@@ -138,8 +186,8 @@ GO = {
     "go_tunneled": {
         "mode": "tunneled",
         "title": "Tunneled",
-        "url": "http://%s/" % RADXA_HOST,
-        "probe": "http://%s/" % RADXA_HOST,
+        "url": "http://%s/" % (RADXA_HOST or CREATOR_HOST),
+        "probe": "http://%s/" % (RADXA_HOST or CREATOR_HOST),
     },
     "go_soc": {
         "mode": "soc",
@@ -362,8 +410,10 @@ def atomic_write_toolchanges(path, content):
 
 
 def sync_toolchanges(target):
+    if not remote_host_available():
+        raise RuntimeError("Remote Host is not configured or reachable")
 
-    if target == "soc":
+    if target == "tunneled":
         request = urllib.request.Request(
             RADXA_TOOLCHANGES_URL,
             headers={"Cache-Control": "no-cache"}
@@ -381,7 +431,7 @@ def sync_toolchanges(target):
         )
         return
 
-    if target == "tunneled":
+    if target == "soc":
         with open(TOOLCHANGES_FILE, "rb") as f:
             content = f.read(MAX_TOOLCHANGES_SIZE + 1)
 
@@ -485,7 +535,6 @@ def atomic_write_nozzle_hours(path, values):
         return False
 
     file_stat = os.stat(path)
-    shutil.copy2(path, path + ".bak")
 
     directory = os.path.dirname(path)
     fd, temporary_path = tempfile.mkstemp(
@@ -515,8 +564,10 @@ def atomic_write_nozzle_hours(path, values):
 
 
 def sync_nozzle_hours(target):
+    if not remote_host_available():
+        raise RuntimeError("Remote Host is not configured or reachable")
 
-    if target == "soc":
+    if target == "tunneled":
         request = urllib.request.Request(
             RADXA_NOZZLE_HOURS_URL,
             headers={"Cache-Control": "no-cache"}
@@ -535,7 +586,7 @@ def sync_nozzle_hours(target):
         )
         return
 
-    if target == "tunneled":
+    if target == "soc":
         with open(NOZZLE_HOURS_FILE, "r") as f:
             lines = f.readlines()
 
@@ -660,7 +711,6 @@ def atomic_write_firmware_res(path, content, mtime_ns):
         if old_info:
             os.chown(temporary_path, old_info.st_uid, old_info.st_gid)
             atime_ns = old_info.st_atime_ns
-            shutil.copy2(path, path + ".bak")
         else:
             atime_ns = mtime_ns
 
@@ -684,6 +734,12 @@ def sync_firmware_res(target, filenames=None):
     if not SYNC_FIRMWARE_RES:
         return
 
+    if target not in ("soc", "tunneled"):
+        raise ValueError("Invalid firmwareRes sync target")
+
+    if not remote_host_available():
+        raise RuntimeError("External Host is not configured or reachable")
+
     import base64
 
     request = urllib.request.Request(
@@ -695,11 +751,11 @@ def sync_firmware_res(target, filenames=None):
         remote_result = json.loads(response.read().decode("utf-8"))
 
     if not remote_result.get("success"):
-        raise RuntimeError("Il Radxa non ha restituito i file firmwareRes")
+        raise RuntimeError("External Host did not return firmwareRes files")
 
     remote_files = remote_result.get("files")
     if not isinstance(remote_files, dict):
-        raise ValueError("Risposta firmwareRes del Radxa non valida")
+        raise ValueError("Invalid firmwareRes response from External Host")
 
     for filename in (filenames or FIRMWARE_RES_FILES):
         local_path = os.path.join(CONFIG_DIR, filename)
@@ -707,56 +763,38 @@ def sync_firmware_res(target, filenames=None):
         remote_info = remote_files.get(filename)
 
         if not isinstance(remote_info, dict):
-            raise ValueError("Metadati remoti mancanti per " + filename)
+            raise ValueError("Missing External Host metadata for " + filename)
 
         remote_exists = remote_info.get("exists") is True
-        local_content = None
-        local_mtime_ns = None
-        remote_content = None
-        remote_mtime_ns = None
 
-        if local_exists:
-            local_stat = os.stat(local_path)
-            local_mtime_ns = local_stat.st_mtime_ns
-            with open(local_path, "rb") as file:
-                local_content = file.read(MAX_FIRMWARE_RES_SIZE + 1)
-            if len(local_content) > MAX_FIRMWARE_RES_SIZE:
-                raise ValueError("File locale troppo grande: " + filename)
-
-        if remote_exists:
-            remote_mtime_ns = remote_info.get("mtime_ns")
-            if type(remote_mtime_ns) is not int or remote_mtime_ns < 0:
-                raise ValueError("Timestamp remoto non valido: " + filename)
-
-            remote_content = base64.b64decode(
-                remote_info.get("data", ""),
-                validate=True
-            )
-            if len(remote_content) > MAX_FIRMWARE_RES_SIZE:
-                raise ValueError("File remoto troppo grande: " + filename)
-
-        if not local_exists and not remote_exists:
-            print("[API] firmwareRes: %s assente su entrambi, ignorato" % filename, flush=True)
-            continue
-
-        if local_exists and remote_exists:
-            if local_content == remote_content:
-                print("[API] firmwareRes: %s già identico" % filename, flush=True)
+        # SOC mode: Creator 5 is authoritative; upload to External Host.
+        if target == "soc":
+            if not local_exists:
+                print("[API] firmwareRes: local source missing, skipped: " + filename, flush=True)
                 continue
 
-            if local_mtime_ns == remote_mtime_ns:
-                raise RuntimeError(
-                    "Conflitto firmwareRes: %s ha contenuti diversi e timestamp uguali" % filename
+            local_stat = os.stat(local_path)
+            with open(local_path, "rb") as file:
+                local_content = file.read(MAX_FIRMWARE_RES_SIZE + 1)
+
+            if len(local_content) > MAX_FIRMWARE_RES_SIZE:
+                raise ValueError("Local firmwareRes file too large: " + filename)
+
+            if remote_exists:
+                remote_content = base64.b64decode(
+                    remote_info.get("data", ""),
+                    validate=True
                 )
+                if len(remote_content) > MAX_FIRMWARE_RES_SIZE:
+                    raise ValueError("External Host firmwareRes file too large: " + filename)
 
-            local_is_newer = local_mtime_ns > remote_mtime_ns
-        else:
-            local_is_newer = local_exists
+                if remote_content == local_content:
+                    print("[API] firmwareRes already identical: " + filename, flush=True)
+                    continue
 
-        if local_is_newer:
             payload = json.dumps({
                 "filename": filename,
-                "mtime_ns": local_mtime_ns,
+                "mtime_ns": local_stat.st_mtime_ns,
                 "data": base64.b64encode(local_content).decode("ascii")
             }).encode("utf-8")
 
@@ -771,24 +809,44 @@ def sync_firmware_res(target, filenames=None):
                 result = json.loads(response.read().decode("utf-8"))
 
             if not result.get("success"):
-                raise RuntimeError("Il Radxa non ha confermato " + filename)
+                raise RuntimeError("External Host did not confirm " + filename)
 
-            direction = "Creator -> Radxa"
+            print("[API] firmwareRes synced Creator 5 -> External Host: " + filename, flush=True)
+            continue
 
-        else:
-            atomic_write_firmware_res(
-                local_path,
-                remote_content,
-                remote_mtime_ns
-            )
-            direction = "Radxa -> Creator"
+        # Tunneled mode: External Host is authoritative; download locally.
+        if not remote_exists:
+            print("[API] firmwareRes: External Host source missing, skipped: " + filename, flush=True)
+            continue
 
-        print(
-            "[API] firmwareRes sincronizzato: %s (%s)" % (filename, direction),
-            flush=True
+        remote_mtime_ns = remote_info.get("mtime_ns")
+        if type(remote_mtime_ns) is not int or remote_mtime_ns < 0:
+            raise ValueError("Invalid External Host timestamp: " + filename)
+
+        remote_content = base64.b64decode(
+            remote_info.get("data", ""),
+            validate=True
+        )
+        if len(remote_content) > MAX_FIRMWARE_RES_SIZE:
+            raise ValueError("External Host firmwareRes file too large: " + filename)
+
+        if local_exists:
+            with open(local_path, "rb") as file:
+                local_content = file.read(MAX_FIRMWARE_RES_SIZE + 1)
+            if len(local_content) > MAX_FIRMWARE_RES_SIZE:
+                raise ValueError("Local firmwareRes file too large: " + filename)
+
+            if local_content == remote_content:
+                print("[API] firmwareRes already identical: " + filename, flush=True)
+                continue
+
+        atomic_write_firmware_res(
+            local_path,
+            remote_content,
+            remote_mtime_ns
         )
 
-
+        print("[API] firmwareRes synced External Host -> Creator 5: " + filename, flush=True)
 
 
 
@@ -848,7 +906,7 @@ def collect_synchronization():
             "data": base64.b64encode(content).decode("ascii")
         }
 
-    return {
+    creator_data = {
         "success": True,
         "mode": mode,
         "toolchanges": toolchanges.decode("utf-8"),
@@ -857,6 +915,58 @@ def collect_synchronization():
             "success": True,
             "files": firmware_files
         }
+    }
+
+    external = {
+        "configured": bool(RADXA_HOST),
+        "available": False,
+        "toolchanges": None,
+        "nozzle_hours": None,
+        "firmware_res": None
+    }
+
+    if RADXA_HOST:
+        external["available"] = remote_host_available(timeout=1)
+
+    if external["available"]:
+        endpoints = (
+            ("toolchanges", RADXA_TOOLCHANGES_URL, "text"),
+            ("nozzle_hours", RADXA_NOZZLE_HOURS_URL, "json"),
+            ("firmware_res", RADXA_FIRMWARE_RES_URL, "json")
+        )
+
+        for name, url, response_type in endpoints:
+            try:
+                request = urllib.request.Request(
+                    url,
+                    headers={"Cache-Control": "no-cache"}
+                )
+                with urllib.request.urlopen(request, timeout=10) as response:
+                    content = response.read()
+
+                if response_type == "text":
+                    external[name] = content.decode("utf-8")
+                else:
+                    external[name] = json.loads(content.decode("utf-8"))
+
+            except Exception as exc:
+                external[name] = {"_error": str(exc)}
+
+    return {
+        "success": True,
+        "mode": mode,
+        "sync_direction": (
+            "Creator 5 -> External Host" if mode == "soc"
+            else "External Host -> Creator 5" if mode == "tunneled"
+            else None
+        ),
+        "creator": creator_data,
+        "external_host": external,
+
+        # Preserve the existing local-data fields for compatibility.
+        "toolchanges": creator_data["toolchanges"],
+        "nozzle_hours": creator_data["nozzle_hours"],
+        "firmware_res": creator_data["firmware_res"]
     }
 
 
@@ -873,11 +983,18 @@ def change_mode(target):
     if target == current:
         return False
 
-    # Synchronize lifetime toolchange counters before changing mode markers.
-    # Any transfer or validation error aborts the mode switch and reboot.
-    sync_toolchanges(target)
-    sync_nozzle_hours(target)
-    sync_firmware_res(target)
+    # Synchronize data before changing mode when the External Host is available.
+    if remote_host_available(timeout=1):
+        print("[API] External Host online: synchronizing printer data", flush=True)
+        sync_toolchanges(target)
+        sync_nozzle_hours(target)
+        if SYNC_FIRMWARE_RES:
+            sync_firmware_res(target)
+    else:
+        print(
+            "[API] External Host unavailable: continuing with local data",
+            flush=True
+        )
 
     # Set permissions first, then reconcile mode markers.
     os.chmod(
@@ -924,6 +1041,279 @@ def change_screen(screen):
         f.write(screen + "\n")
 
     return True
+
+
+
+
+# ============================================================
+# LOCAL DASHBOARD AND PLUGIN INVENTORY
+# ============================================================
+
+DASHBOARD_DIR = "/usr/data/opencreator/plugins/api-server/frontend"
+PLUGIN_DIR = "/usr/data/opencreator/plugins"
+PLUGIN_CATALOG_FILE = "/usr/data/opencreator/plugin-manager/catalog.json"
+PLUGIN_MANAGER_EXECUTABLE = "/usr/data/opencreator/plugin-manager/oc-plugin"
+PLUGIN_INSTALL_LOCK = threading.Lock()
+MOONRAKER_URL = "http://127.0.0.1:7125"
+GIT_EXECUTABLE = "/opt/bin/git"
+
+
+def dashboard_moonraker_data():
+    objects = (
+        "webhooks", "print_stats", "extruder", "heater_bed", "toolhead",
+        "mcu", "mcu eboard", "mcu eheaterboard", "mcu levelboard",
+        "temperature_sensor mainboard_mcu",
+        "temperature_sensor toolhead_mcu"
+    )
+    from urllib.parse import quote
+    query = "&".join(quote(name, safe="") for name in objects)
+    request = urllib.request.Request(
+        MOONRAKER_URL + "/printer/objects/query?" + query,
+        headers={"Cache-Control": "no-cache"}
+    )
+    with urllib.request.urlopen(request, timeout=3) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    return payload.get("result", {}).get("status", {})
+
+
+def dashboard_temperature(status, candidates):
+    for name in candidates:
+        value = status.get(name)
+        if isinstance(value, dict) and isinstance(value.get("temperature"), (int, float)):
+            return {"temperature": value["temperature"]}
+
+    for name, value in status.items():
+        lowered = name.lower()
+        if any(candidate in lowered for candidate in candidates):
+            if isinstance(value, dict) and isinstance(value.get("temperature"), (int, float)):
+                return {"temperature": value["temperature"]}
+
+    return None
+
+
+def dashboard_external_host_temperature():
+    try:
+        with open(RADXA_TEMP_FILE, "r") as f:
+            value = float(f.read().strip())
+        return {"temperature": value / 1000.0}
+    except (OSError, ValueError):
+        return None
+
+
+def collect_dashboard():
+    status = {}
+    moonraker_error = None
+
+    try:
+        status = dashboard_moonraker_data()
+    except Exception as error:
+        moonraker_error = str(error)
+
+    webhooks = status.get("webhooks", {})
+    print_stats = status.get("print_stats", {})
+    printer_connected = (
+        isinstance(webhooks, dict)
+        and str(webhooks.get("state", "")).lower() == "ready"
+    )
+
+    mcus = {}
+    for name in ("mcu", "mcu eboard", "mcu eheaterboard", "mcu levelboard"):
+        info = status.get(name)
+        connected = isinstance(info, dict) and bool(info)
+        mcus[name] = {
+            "connected": connected,
+            "chip": (
+                (info.get("mcu_constants") or {}).get("MCU")
+                if connected else None
+            )
+        }
+
+    try:
+        mode = get_mode()
+    except Exception:
+        mode = "unknown"
+
+    try:
+        screen = open(SCREEN_FILE, "r").read().strip()
+    except Exception:
+        screen = "unknown"
+
+    temperatures = {
+        "external_host": dashboard_external_host_temperature(),
+        "mainboard": dashboard_temperature(status, (
+            "temperature_sensor mainboard_mcu",
+        )),
+        "toolhead": dashboard_temperature(status, (
+            "temperature_sensor toolhead_mcu",
+        )),
+        "nozzle": dashboard_temperature(status, ("extruder",)),
+        "bed": dashboard_temperature(status, ("heater_bed",))
+    }
+
+    return {
+        "printer": {
+            "connected": printer_connected,
+            "state": webhooks.get("state", "Disconnected"),
+            "print": {"state": print_stats.get("state", "Unknown")}
+        },
+        "creator": {
+            "reachable": True,
+            "screen": screen
+        },
+        "soc": {"mode": mode},
+        "external_host": {
+            "configured": bool(RADXA_HOST),
+            "reachable": (
+                remote_host_available(timeout=1) if RADXA_HOST else False
+            )
+        },
+        "temperatures": temperatures,
+        "mcus": mcus,
+        "errors": {"moonraker": moonraker_error}
+    }
+
+
+def load_plugin_catalog():
+    try:
+        with open(PLUGIN_CATALOG_FILE, "r") as f:
+            data = json.load(f)
+        entries = data.get("plugins", [])
+        return {
+            item["id"]: item
+            for item in entries
+            if isinstance(item, dict)
+            and isinstance(item.get("id"), str)
+        }
+    except Exception as error:
+        print("[API] Plugin catalog unavailable: %s" % error, flush=True)
+        return {}
+
+
+def collect_plugins():
+    catalog = load_plugin_catalog()
+    plugins = []
+
+    try:
+        entries = sorted(os.listdir(PLUGIN_DIR))
+    except OSError:
+        entries = []
+
+    for plugin_id in entries:
+        if plugin_id.startswith("."):
+            continue
+
+        directory = os.path.join(PLUGIN_DIR, plugin_id)
+        if not os.path.isdir(directory):
+            continue
+
+        metadata = catalog.get(plugin_id, {})
+        has_git = os.path.isdir(os.path.join(directory, ".git")) or os.path.isfile(
+            os.path.join(directory, ".git")
+        )
+
+        plugins.append({
+            "id": plugin_id,
+            "name": metadata.get("name", plugin_id.replace("-", " ").replace("_", " ").title()),
+            "description": metadata.get("description", ""),
+            "author": metadata.get("author", ""),
+            "official": metadata.get("official", False),
+            "repository": metadata.get("url", ""),
+            "note": metadata.get("note", ""),
+            "installed": True,
+            "trackable": bool(has_git and metadata.get("url")),
+            "update_status": "not_checked"
+        })
+
+    available = [
+        {"id": k, "name": v.get("name", k),
+         "description": v.get("description", ""),
+         "author": v.get("author", ""),
+         "official": v.get("official", False),
+         "repository": v.get("url", ""), "note": v.get("note", "")}
+        for k, v in sorted(catalog.items())
+        if v.get("url") and not os.path.isdir(os.path.join(PLUGIN_DIR, k))
+    ]
+    return {"success": True, "plugins": plugins, "available": available}
+
+
+def normalize_repository_url(value):
+    return str(value or "").strip().rstrip("/").removesuffix(".git").lower()
+
+
+def check_plugin_updates(plugin_id):
+    if not re.fullmatch(r"[a-zA-Z0-9_.-]{1,80}", plugin_id):
+        return 400, {"success": False, "status": "not_trackable", "error": "Invalid plugin ID"}
+
+    catalog = load_plugin_catalog()
+    metadata = catalog.get(plugin_id)
+    directory = os.path.join(PLUGIN_DIR, plugin_id)
+
+    if not metadata or not os.path.isdir(directory):
+        return 404, {"success": False, "status": "not_trackable", "error": "Plugin is not catalogued or installed"}
+
+    if not os.path.exists(os.path.join(directory, ".git")):
+        return 200, {"success": True, "status": "not_trackable", "error": "No Git repository"}
+
+    if not os.path.isfile(GIT_EXECUTABLE):
+        return 200, {"success": False, "status": "unable_to_check", "error": "Git executable unavailable"}
+
+    repository = metadata.get("url", "")
+    try:
+        def git(*args):
+            return subprocess.check_output(
+                [GIT_EXECUTABLE, "-C", directory] + list(args),
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                timeout=5
+            ).strip()
+
+        local_commit = git("rev-parse", "HEAD")
+        branch = git("branch", "--show-current")
+        origin = git("remote", "get-url", "origin")
+        dirty = bool(git("status", "--porcelain"))
+
+        if not branch:
+            return 200, {
+                "success": True, "status": "not_trackable",
+                "error": "Detached HEAD", "local_commit": local_commit,
+                "dirty": dirty
+            }
+
+        if normalize_repository_url(origin) != normalize_repository_url(repository):
+            return 200, {
+                "success": True, "status": "not_trackable",
+                "error": "Git origin does not match the plugin catalog",
+                "local_commit": local_commit, "branch": branch, "dirty": dirty
+            }
+
+        remote_output = subprocess.check_output(
+            [GIT_EXECUTABLE, "ls-remote", repository, "refs/heads/" + branch],
+            stderr=subprocess.STDOUT,
+            universal_newlines=True,
+            timeout=10
+        ).strip()
+
+        remote_commit = remote_output.split()[0] if remote_output else None
+        if not remote_commit:
+            return 200, {
+                "success": False, "status": "unable_to_check",
+                "error": "Remote branch not found",
+                "local_commit": local_commit, "branch": branch, "dirty": dirty
+            }
+
+        return 200, {
+            "success": True,
+            "status": "update_available" if remote_commit != local_commit else "up_to_date",
+            "local_commit": local_commit,
+            "remote_commit": remote_commit,
+            "branch": branch,
+            "dirty": dirty
+        }
+
+    except subprocess.TimeoutExpired:
+        return 200, {"success": False, "status": "unable_to_check", "error": "Git operation timed out"}
+    except Exception as error:
+        return 200, {"success": False, "status": "unable_to_check", "error": str(error)}
 
 
 # ============================================================
@@ -1080,6 +1470,39 @@ class APIHandler(BaseHTTPRequestHandler):
 
         path = urlparse(self.path).path.rstrip("/") or "/"
 
+        # Dashboard frontend assets.
+        dashboard_assets = {
+            "/": ("index.html", "text/html; charset=utf-8"),
+            "/dashboard.js": ("dashboard.js", "application/javascript; charset=utf-8"),
+            "/dashboard.css": ("dashboard.css", "text/css; charset=utf-8")
+        }
+        if path in dashboard_assets:
+            filename, content_type = dashboard_assets[path]
+            asset_path = os.path.join(DASHBOARD_DIR, filename)
+            try:
+                with open(asset_path, "rb") as asset:
+                    body = asset.read()
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+            except OSError:
+                self.send_json(404, {"error": "Dashboard asset not found"})
+            return
+
+        if path == "/api/dashboard":
+            try:
+                self.send_json(200, collect_dashboard())
+            except Exception as error:
+                self.send_json(500, {"success": False, "error": str(error)})
+            return
+
+        if path == "/api/plugins":
+            self.send_json(200, collect_plugins())
+            return
+
         # One-click mode switch + wait page + redirect
         action = path.strip("/")
 
@@ -1109,6 +1532,22 @@ class APIHandler(BaseHTTPRequestHandler):
 
         if path == "/off":
             self.handle_mode("soc")
+            return
+
+        # External Host status for the web interface
+        if path == "/api/external-host":
+
+            available = remote_host_available(timeout=1)
+
+            self.send_json(200, {
+                "configured": bool(RADXA_HOST),
+                "available": bool(available),
+                "url": (
+                    "http://%s:8765/" % RADXA_HOST
+                    if RADXA_HOST else None
+                )
+            })
+
             return
 
         # Synchronization state
@@ -1240,6 +1679,46 @@ class APIHandler(BaseHTTPRequestHandler):
             return
 
         path = urlparse(self.path).path.rstrip("/")
+
+        install_match = re.fullmatch(
+            r"/api/plugins/([a-zA-Z0-9_.-]+)/install", path
+        )
+        if install_match:
+            pid = install_match.group(1)
+            item = load_plugin_catalog().get(pid)
+            if not item or not item.get("url"):
+                self.send_json(404, {"success": False, "error": "Unknown plugin"})
+                return
+            if os.path.isdir(os.path.join(PLUGIN_DIR, pid)):
+                self.send_json(409, {"success": False, "error": "Already installed"})
+                return
+            if not PLUGIN_INSTALL_LOCK.acquire(False):
+                self.send_json(409, {"success": False, "error": "Installation already running"})
+                return
+            try:
+                result = subprocess.run(
+                    [PLUGIN_MANAGER_EXECUTABLE, "install", item["url"]],
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    universal_newlines=True, timeout=1800
+                )
+                output = (result.stdout or "")[-8000:]
+                self.send_json(200 if result.returncode == 0 else 500, {
+                    "success": result.returncode == 0, "plugin_id": pid,
+                    "output": output, "error": "" if result.returncode == 0 else output
+                })
+            except Exception as e:
+                self.send_json(500, {"success": False, "error": str(e)})
+            finally:
+                PLUGIN_INSTALL_LOCK.release()
+            return
+
+        plugin_match = re.fullmatch(
+            r"/api/plugins/([a-zA-Z0-9_.-]+)/check-updates", path
+        )
+        if plugin_match:
+            code, result = check_plugin_updates(plugin_match.group(1))
+            self.send_json(code, result)
+            return
 
         # Manual synchronization
         if path.startswith("/api/synchronization/"):

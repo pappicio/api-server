@@ -1,103 +1,92 @@
 # OpenCreator API Server
 
-API Server is the Creator 5 component of the Creator 5 / Radxa ZERO 3W Klipper mode switching integration.
+OpenCreator API Server is a modular API and dashboard component for the FlashForge Creator 5 running OpenCreator.
 
-It provides the HTTP API used to switch between Creator 5 SoC mode and Tunneled mode, synchronize printer data, and redirect the browser to the active Klipper interface.
+It provides local printer APIs, a web dashboard, configuration and calibration access, screen management, and SoC / Tunneled mode switching.
 
+It can operate independently on the Creator 5. A remote Linux host is optional and is only required for features that depend on remote monitoring and synchronization.
 
+## Features
 
-Companion Project — Mode Monitor
-
-The OpenCreator API Server is designed to work together with Raspberry-C5-klipper_mode_monitor, installed on a Raspberry Pi, Radxa ZERO 3W, or another compatible Linux host running Klipper.
-
-Repository:
-
-https://github.com/pappicio/Raspberry-C5-klipper_mode_monitor
-
-Both components are required for the complete Creator 5 / remote host integration.
-
-How the two components work together
-
-API Server (Creator 5): Handles mode switching between SoC and Tunneled, coordinates synchronization, provides the printer-side API, and manages the transition and redirection process.
-
-Mode Monitor (Remote Host): Provides remote monitoring and HTTP endpoints, stores and synchronizes toolchange counters and nozzle usage data, and sends remote SoC temperature information to the Creator 5.
-
-The two components communicate over the network using HTTP APIs.
-
-Installation requirements
-
-Install and configure Script Runner on the Creator 5.
-
-Install Mode Monitor on the Raspberry Pi or compatible remote Linux host.
-
-Install API Server on the Creator 5.
-
-Configure the correct IP addresses during installation.
-
-Both components must be running and reachable for mode switching and data synchronization to work correctly.
-
-
-
-
+- Web dashboard served directly by the API Server.
+- Local printer status and information.
+- Printer configuration access.
+- Firmware calibration file access and synchronization.
+- SoC / Tunneled mode switching.
+- GrumpyScreen and HelixScreen switching.
+- External Host connectivity and status monitoring.
+- Toolchange counter and nozzle usage synchronization.
+- Optional firmware calibration synchronization.
+- Installed plugin discovery and update information.
+- Local operation when the External Host is unavailable.
 
 ## Architecture
 
-The integration consists of two components:
+The integration consists of two independent components.
 
-- **OpenCreator API Server** runs on the FlashForge Creator 5.
-- **klipper_mode_monitor** runs on the Radxa ZERO 3W.
-
-Both services use TCP port 8765, but run on different devices. There is no port conflict.
-
-Example network configuration:
-
-| Device | Example IP | Service |
+| Component | Device | Responsibility |
 |---|---|---|
-| Creator 5 | 192.168.1.194 | API Server, port 8765 |
-| Radxa ZERO 3W | 192.168.1.197 | klipper_mode_monitor, port 8765 |
+| OpenCreator API Server | FlashForge Creator 5 | Local APIs, dashboard, printer management and mode switching |
+| Mode Monitor | Raspberry Pi, Radxa ZERO 3W or compatible Linux host | Remote monitoring, synchronization endpoints and External Host integration |
 
-Use the actual static IP addresses configured on your network.
+Repository for the companion component:
+
+https://github.com/pappicio/Raspberry-C5-klipper_mode_monitor
+
+Both components are needed for the complete Creator 5 / remote host integration. However, the API Server does not require the remote component to provide its local functionality.
+
+### Standalone operation
+
+The API Server continues operating when the External Host is:
+
+- Not configured.
+- Offline or unreachable.
+- Temporarily unavailable.
+
+Local dashboard data, printer APIs, configuration access, calibration access and local controls remain available.
+
+Only features requiring the remote host are unavailable or skipped. Remote connectivity problems must not prevent the Creator 5 from operating in SoC mode.
 
 ## Requirements
 
 - FlashForge Creator 5 running OpenCreator.
 - Script Runner installed and working on the Creator 5.
-- Radxa ZERO 3W running klipper_mode_monitor.
-- Both devices reachable over the local network.
-- Python available at /usr/data/python-hf/bin/python3 on the Creator 5.
-- Moonraker available locally on port 7125.
+- Python available at `/usr/data/python-hf/bin/python3`.
+- Moonraker available locally on port `7125`.
 
-Install and configure the Radxa component before testing the complete integration.
+For remote integration:
+
+- Raspberry Pi, Radxa ZERO 3W or compatible Linux host.
+- Mode Monitor installed and running on the remote host.
+- Network connectivity between the Creator 5 and the remote host.
 
 ## Installation
 
+Install the API Server plugin on the Creator 5 using the OpenCreator plugin installation mechanism.
 
+The plugin includes:
 
+- `install.sh`
+- `update.sh`
+- `uninstall.sh`
+- `scripts/api_server.py`
+- `frontend/`
 
-## Firmware Calibration Synchronization
+The installer checks the required Creator 5 dependencies, installs the API Server files and configures the optional remote host integration.
 
-The API Server supports automatic synchronization of firmware calibration files between the Creator 5 and a remote Klipper host (Raspberry Pi / Radxa).
+Script Runner is required to execute the API Server in the Creator 5 runtime.
 
-Synchronization is performed automatically before every SoC / Tunneled mode transition.
+A remote host is not mandatory for installation or local operation.
 
-### Installation Option
+### External Host configuration
 
-During API Server installation, the installer asks:
-
-```text
-Do you want to synchronize calibrations on every SoC <-> Tunneled mode switch? (y/N)
-```
-
-- `y`: enables firmware calibration synchronization.
-- `n` or Enter: leaves synchronization disabled.
-
-The setting is stored in:
+The API Server configuration is stored in:
 
 ```text
 /usr/data/opencreator/api-server.json
 ```
 
-Example configuration with synchronization enabled:
+Example:
 
 ```json
 {
@@ -106,17 +95,164 @@ Example configuration with synchronization enabled:
 }
 ```
 
-For existing installations where `sync_firmware_res` is missing, synchronization remains disabled by default.
+- `remote_host`: IP address of the remote Linux host. Remote integration is unavailable when no host is configured or reachable.
+- `sync_firmware_res`: enables or disables firmware calibration synchronization.
 
-The setting can also be changed manually:
+The remote host is optional. Its absence does not disable the local API Server.
+
+## Dashboard
+
+The API Server includes a web dashboard served by its existing HTTP server.
+
+Open:
+
+```text
+http://CREATOR_IP:8765/
+```
+
+The dashboard uses the same API Server process and port. It does not start a separate web server.
+
+The dashboard provides access to local printer information, configuration, calibration, mode controls, screen controls, External Host status and synchronization information.
+
+### External Host status
+
+The dashboard reports whether the remote host is configured and reachable.
+
+Remote-dependent information and actions are handled independently from local printer functionality.
+
+When the External Host is unavailable, the dashboard remains usable and local controls remain available.
+
+### Mode controls
+
+The dashboard provides controls for switching between:
+
+- SoC mode.
+- Tunneled mode.
+
+The Tunneled mode action requires a reachable External Host. When the host is unavailable, the control remains visible but disabled.
+
+The SoC mode control is available when the current mode permits the transition.
+
+### Screen controls
+
+The dashboard provides controls for switching between:
+
+- GrumpyScreen.
+- HelixScreen.
+
+### Plugin information
+
+The dashboard can discover installed plugins by reading their manifests under:
+
+```text
+/usr/data/opencreator/plugins/
+```
+
+Plugin manifests use the `opencreator-plugin.json` format.
+
+The dashboard can present installed plugin information and available version/update information.
+
+Plugin installation, updating and removal remain the responsibility of the official OpenCreator Plugin Manager. The API Server does not replace or modify the plugin manager.
+
+## Script Runner
+
+Script Runner executes the API Server script in the Creator 5 runtime.
+
+The runtime script is installed at:
+
+```text
+/usr/data/opencreator/scripts/api_server.py
+```
+
+The API Server uses the existing HTTP server on port `8765`.
+
+The dashboard and API endpoints share the same server and process.
+
+## Mode switching
+
+The API Server exposes mode-switching endpoints:
+
+- `GET /go_tunneled`
+- `GET /go_soc`
+- `POST /api/mode/tunneled`
+- `POST /api/mode/soc`
+
+The browser endpoints initiate the requested transition and provide the corresponding waiting and redirection behavior.
+
+The POST endpoints are used by the dashboard controls.
+
+### Switch to Tunneled mode
+
+The Creator 5 initiates the transition to Tunneled mode.
+
+When the remote host is available, the API Server coordinates the required synchronization before scheduling the transition.
+
+After the transition, the browser can be redirected to the remote Klipper interface.
+
+### Switch to SoC mode
+
+The remote integration can request a transition back to SoC mode through the Creator 5 API Server.
+
+When the remote host is available, synchronization is performed before the transition.
+
+The Creator 5 then schedules the required reboot and returns to its local interface.
+
+### Legacy mode endpoints
+
+The following endpoints remain available for compatibility:
+
+- `/on`
+- `/off`
+
+## Data synchronization
+
+The API Server coordinates synchronization between the Creator 5 and the remote Mode Monitor.
+
+Supported data includes:
+
+| Data | Description |
+|---|---|
+| Toolchange counters | Synchronization of toolchange counts |
+| Nozzle usage | Synchronization of cumulative nozzle usage hours |
+| Firmware calibration | Optional synchronization of supported calibration files |
+| External Host temperature | Remote system temperature information |
+
+Remote synchronization is skipped when the External Host is unavailable.
+
+### Toolchange counters
+
+Creator 5 toolchange data is stored in:
+
+```text
+/usr/data/opencreator/klipper/config/toolchanges.txt
+```
+
+The remote Mode Monitor provides the corresponding synchronization API.
+
+### Nozzle usage
+
+Nozzle lifetime counters are stored in:
+
+```text
+/usr/data/opencreator/klipper/config/c5_misc_variables.cfg
+```
+
+The supported variables are:
+
+- `nozzle_seconds_t0`
+- `nozzle_seconds_t1`
+- `nozzle_seconds_t2`
+- `nozzle_seconds_t3`
+
+The remote Mode Monitor provides the corresponding nozzle usage API.
+
+### Firmware calibration synchronization
+
+Firmware calibration synchronization is optional and controlled by:
 
 ```json
 "sync_firmware_res": true
 ```
-
-Set it to `false` to disable synchronization.
-
-### Synchronized Files
 
 The Creator 5 calibration directory is:
 
@@ -124,270 +260,164 @@ The Creator 5 calibration directory is:
 /usr/data/firmwareRes/config/
 ```
 
-The following files are synchronized:
+Supported files:
 
 - `extruder.json`
 - `zoffset.json`
 
 `test.json` is intentionally excluded.
 
-### Synchronization Logic
+Synchronization compares file modification timestamps and transfers the newest version. Original timestamps are preserved, file replacement is atomic, and conflicts are reported rather than silently overwriting files.
 
-The Creator 5 API Server coordinates synchronization by comparing the modification timestamps of each file on both devices.
+When synchronization is disabled, no firmware calibration transfer is performed.
 
-For each file:
-
-- If it exists only on the Creator 5, it is copied to the remote host.
-- If it exists only on the remote host, it is copied to the Creator 5.
-- If both devices have the file, the newest version takes precedence.
-- If timestamps and contents are identical, no transfer is performed.
-- If timestamps are identical but contents differ, a conflict is reported and neither file is overwritten.
-
-Additional guarantees:
-
-- Original file modification timestamps are preserved.
-- File replacement is atomic.
-- Each calibration file is evaluated independently.
-- No synchronization occurs when the feature is disabled.
-
-### Mode Transition Integration
-
-Calibration synchronization is integrated into the existing mode-switch sequence, alongside toolchange and nozzle usage synchronization.
-
-It runs before both transitions:
-
-- SoC → Tunneled
-- Tunneled → SoC
-
-The Creator 5 remains the synchronization coordinator. It determines which version is newer and controls the transfer direction.
-
-### Remote Host Requirements
-
-The remote host must have the updated `klipper-mode-monitor` service installed.
-
-The monitor provides the following HTTP endpoints:
+The remote Mode Monitor must support the following endpoints:
 
 ```text
 GET  /api/firmware_res
 POST /api/firmware_res
 ```
 
-Repository:
-
-https://github.com/pappicio/Raspberry-C5-klipper_mode_monitor
-
-Both the Creator 5 API Server and the remote Mode Monitor must support firmware calibration synchronization.
-
-
-
-
-Install the API Server plugin on the Creator 5 using the OpenCreator plugin installation mechanism.
-
-The installer:
-
-1. Checks that Script Runner is installed.
-2. Checks that the API Server source script is present.
-3. Requests the Radxa IPv4 address.
-4. Determines the Creator 5 IPv4 address using the route to the Radxa.
-5. Saves the Radxa address in /usr/data/opencreator/api-server.json.
-6. Copies api_server.py to /usr/data/opencreator/scripts/.
-7. Integrates the TUNNELED_MODE macro into the existing klipper/config/oc-macros.cfg.
-8. Integrates the Tunneled Mode entry into klipper/config/.theme/navi.json.
-9. Restarts Script Runner and Klipper, then checks that Klipper becomes ready.
-
-The installer preserves existing configuration entries, macros, and navigation links. It creates timestamped backups before modifying existing configuration files.
-
-## Script Runner
-
-Script Runner is required because it executes the API Server script in the Creator 5 runtime.
-
-The API Server script is installed at:
-
-/usr/data/opencreator/scripts/api_server.py
-
-The installer and updater restart Script Runner after copying the script.
-
-## Klipper macro
-
-The installer adds two sections to oc-macros.cfg:
-
-- gcode_shell_command oc_tunneled_mode
-- gcode_macro TUNNELED_MODE
-
-The shell command calls the local Creator 5 API endpoint:
-
-http://127.0.0.1:8765/go_tunneled
-
-Invoke the macro from the Klipper console using:
-
-    TUNNELED_MODE
-
-The installer does not modify printer.my.macro.cfg or other personal Klipper macro files.
-
-The existing oc-macros.cfg include in printer.base.cfg is preserved. The installer does not add a second include.
-
-## Navigation integration
-
-The installer adds or updates the Tunneled Mode entry in:
-
-/usr/data/opencreator/klipper/config/.theme/navi.json
-
-The link points to the Creator 5 API Server:
-
-http://CREATOR_IP:8765/go_tunneled
-
-Existing navigation entries are preserved. Re-running the installer updates the existing entry instead of creating duplicates.
-
-The navigation file is intended for compatible Mainsail-style navigation integrations. Visibility depends on the frontend in use.
-
-## Mode switching
-
-The API Server exposes two browser endpoints:
-
-- /go_tunneled
-- /go_soc
-
-These endpoints initiate the requested mode transition and return a waiting page that redirects the browser when the destination interface is available.
-
-### Switch to SoC mode
-
-The Radxa component initiates the switch to SoC mode through the Creator 5 API Server.
-
-Before changing mode, the Creator 5 synchronizes:
-
-- Toolchange counters from Radxa to Creator 5.
-- Nozzle usage seconds from Radxa to Creator 5.
-
-The Creator 5 then updates its mode state and schedules a reboot.
-
-After reboot, the browser is redirected to the Creator 5 interface.
-
-### Switch to Tunneled mode
-
-The Creator 5 API Server initiates the switch to Tunneled mode.
-
-Before changing mode, the Creator 5 synchronizes:
-
-- Toolchange counters from Creator 5 to Radxa.
-- Nozzle usage seconds from Creator 5 to Radxa.
-
-The Creator 5 then updates its mode state and schedules a reboot.
-
-After reboot, the browser is redirected to the Radxa interface.
-
-## Data synchronization
-
-The two components exchange cumulative printer data.
-
-| Data | Switch to SoC | Switch to Tunneled |
-|---|---|---|
-| Toolchange counters | Radxa to Creator 5 | Creator 5 to Radxa |
-| Nozzle usage seconds | Radxa to Creator 5 | Creator 5 to Radxa |
-| Radxa SoC temperature | Radxa to Creator 5 | Radxa to Creator 5 |
-
-Toolchange counters are stored on the Creator 5 in:
-
-/usr/data/opencreator/klipper/config/toolchanges.txt
-
-Nozzle lifetime counters are stored in:
-
-/usr/data/opencreator/klipper/config/c5_misc_variables.cfg
-
-The nozzle variables are:
-
-- nozzle_seconds_t0
-- nozzle_seconds_t1
-- nozzle_seconds_t2
-- nozzle_seconds_t3
-
-The Radxa component provides the corresponding synchronization endpoints.
-
-## Configuration
-
-The Creator 5 API configuration is stored in:
-
-/usr/data/opencreator/api-server.json
-
-Example configuration:
-
-    {
-        "remote_host": "192.168.1.197"
-    }
-
-The installer writes the Radxa address supplied during installation.
-
-If the Radxa IP address changes, run the installer again and provide the new address. Keep both devices on stable IP addresses.
+## API endpoints
 
 The API Server listens on:
 
+```text
 0.0.0.0:8765
+```
 
-## API endpoints
+The following endpoints are provided by the Creator 5 API Server.
 
-The principal mode-switching endpoints are:
+### Status and information
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| GET | /go_tunneled | Switch to Tunneled mode and redirect |
-| GET | /go_soc | Switch to SoC mode and redirect |
-| GET | /status | Report the current mode |
+| GET | `/` | Dashboard |
+| GET | `/status` | Current mode status |
+| GET | `/api/status` | API status information |
+| GET | `/api/external-host` | External Host configuration and availability |
+| GET | `/api/printer/info` | Printer information |
+| GET | `/api/config` | Printer configuration |
+| GET | `/api/config/` | Configuration access |
+| GET | `/api/synchronization` | Synchronization status |
 
-The API also provides printer information and synchronization endpoints, including toolchange counters, nozzle lifetime data, and the endpoint used to receive Radxa SoC temperature.
+### Calibration
 
-The Radxa monitor provides its own HTTP API on its separate device, also using port 8765.
+The API provides calibration access through:
+
+```text
+/api/calibration/
+```
+
+Supported calibration resources include:
+
+- `bed_mesh`
+- `extruder`
+- `zoffset`
+
+### Mode and screen controls
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/go_tunneled` | Initiate Tunneled mode transition |
+| GET | `/go_soc` | Initiate SoC mode transition |
+| POST | `/api/mode/tunneled` | Request Tunneled mode |
+| POST | `/api/mode/soc` | Request SoC mode |
+| POST | `/api/screen/grumpy` | Switch to GrumpyScreen |
+| POST | `/api/screen/helix` | Switch to HelixScreen |
+
+### Synchronization and commands
+
+The API also provides:
+
+- `/api/synchronization`
+- `/api/commands`
+- `/api/pitemp`
+
+`POST /api/pitemp` receives remote host temperature information.
+
+The companion Mode Monitor provides its own synchronization endpoints, including:
+
+```text
+/api/toolchanges
+/api/nozzle_hours
+/api/firmware_res
+```
+
+Both components use port `8765` on their respective devices. There is no port conflict.
 
 ## Update
 
-The update script:
+Use the OpenCreator Plugin Manager to update the API Server.
 
-1. Checks that Script Runner is installed.
-2. Copies the updated api_server.py into the Script Runner scripts folder.
-3. Restarts Script Runner.
+The updater:
 
-The update does not overwrite the Creator 5 configuration, Klipper macros, or navigation file.
+- Updates the API Server source files.
+- Preserves the existing runtime configuration.
+- Restarts Script Runner as required.
+
+The updater does not manage personal Klipper configuration, navigation files or user-defined macros.
 
 ## Uninstallation
 
-The uninstaller:
+Use the OpenCreator Plugin Manager to remove the API Server.
 
-- Removes /usr/data/opencreator/scripts/api_server.py.
-- Removes only the plugin-managed block from oc-macros.cfg.
-- Removes only the plugin's Tunneled Mode navigation entry.
-- Restarts Script Runner and Klipper.
-- Preserves /usr/data/opencreator/api-server.json.
-- Preserves all other macros and navigation entries.
+The uninstaller removes the plugin-managed API Server files and runtime integration.
 
-The Script Runner plugin itself is not removed.
+It does not remove Script Runner or modify unrelated user configuration.
+
+The following configuration is preserved:
+
+```text
+/usr/data/opencreator/api-server.json
+```
+
+Personal Klipper configuration, macros and navigation entries are not managed by the API Server installer or uninstaller.
 
 ## Troubleshooting
 
-### API Server is not responding
+### Dashboard is not responding
 
 Check that Script Runner is installed and running.
 
-Confirm that the API Server script exists at:
+Confirm that the runtime script exists:
 
+```text
 /usr/data/opencreator/scripts/api_server.py
+```
 
-Check that TCP port 8765 is reachable on the Creator 5.
+Check that port `8765` is listening on the Creator 5.
 
-### Mode switching fails
+### External Host is unavailable
 
-Check connectivity between the Creator 5 and Radxa.
+Check the `remote_host` value in:
 
-Verify the remote_host value in api-server.json and confirm that the Radxa monitor is running on port 8765.
+```text
+/usr/data/opencreator/api-server.json
+```
 
-A synchronization or validation error prevents the mode transition from continuing.
+Verify network connectivity and confirm that Mode Monitor is running on the remote host.
 
-### Klipper macro is unavailable
+Local API Server functionality does not depend on remote connectivity.
 
-Confirm that oc-macros.cfg is included by printer.base.cfg and that the oc_tunneled_mode shell command and TUNNELED_MODE macro are present.
+### Mode switching to Tunneled fails
 
-Check the Klipper log for configuration errors.
+Confirm that the External Host is configured and reachable.
 
-### Navigation entry is not visible
+Verify that the remote Mode Monitor service is running and that the required synchronization endpoints are available.
 
-Confirm that .theme/navi.json contains the Tunneled Mode entry and that the active frontend supports custom navigation entries.
+### Screen switching fails
+
+Check that the requested screen is installed and that its corresponding runtime service is available.
+
+### Calibration synchronization fails
+
+Check that `sync_firmware_res` is enabled and that the remote Mode Monitor supports:
+
+```text
+GET  /api/firmware_res
+POST /api/firmware_res
+```
 
 ## License
 
