@@ -352,36 +352,14 @@
             data.external_host?.reachable !== true ||
             data.soc.mode === "tunneled";
 
-        tunneled.addEventListener("click", async () => {
+        tunneled.addEventListener("click", () => {
             if (tunneled.disabled) return;
 
             if (!window.confirm("Switch the Creator 5 to Tunneled mode?")) {
                 return;
             }
 
-            tunneled.disabled = true;
-            tunneled.textContent = "Switching…";
-
-            try {
-                const response = await fetch("/api/mode/tunneled", {
-                    method: "POST",
-                    cache: "no-store"
-                });
-                const result = await response.json();
-
-                if (!response.ok || !result.success) {
-                    throw new Error(result.error || `HTTP ${response.status}`);
-                }
-
-                tunneled.textContent = result.reboot_scheduled
-                    ? "Tunneled mode scheduled"
-                    : "Tunneled mode active";
-
-            } catch (error) {
-                window.alert(`Mode switch failed: ${error.message}`);
-                tunneled.disabled = data.external_host?.reachable !== true;
-                tunneled.textContent = "Switch to Tunneled";
-            }
+            window.top.location.href = `${window.location.protocol}//${window.location.hostname}:8765/go_tunneled`;
         });
 
         actions.appendChild(tunneled);
