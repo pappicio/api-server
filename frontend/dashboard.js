@@ -432,6 +432,15 @@
 
     function renderSynchronization(parent, data) {
         const block = section(parent, "Data Synchronization");
+        const directionRow = el("div", "oc-sync-direction");
+        directionRow.appendChild(el(
+            "span", "oc-sync-direction-label", "Current direction"
+        ));
+        directionRow.appendChild(el(
+            "span", "oc-sync-direction-value",
+            data?.sync_direction || "Unavailable"
+        ));
+        block.appendChild(directionRow);
 
         if (!data || data.success === false) {
             row(block, "Synchronization data", data?.error || "Unavailable", "bad");
@@ -568,8 +577,7 @@
         renderCalibrationCard("Extruder Calibration", "extruder.json");
         renderCalibrationCard("Z Offset Calibration", "zoffset.json");
 
-        row(block, "Automatic sync", "On mode change");
-        row(block, "Current direction", data.sync_direction || "Unavailable");
+
 
         const actions = el("div", "oc-sync-actions");
         const canSync = hostAvailable && (mode === "soc" || mode === "tunneled");

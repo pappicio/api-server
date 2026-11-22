@@ -392,3 +392,25 @@ body {
     flex: 0 0 auto;
     white-space: nowrap;
 }
+
+
+/* Data Synchronization direction row */
+#oc-synchronization > .oc-sync-direction {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding-left: calc(50% + 6px);
+    margin: -2px 0 8px;
+}
+
+.oc-sync-direction-label {
+    color: #aebaca;
+}
+
+.oc-sync-direction-value {
+    font-weight: 600;
+    text-align: right;
+    overflow-wrap: anywhere;
+}
