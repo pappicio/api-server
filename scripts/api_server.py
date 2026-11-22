@@ -679,7 +679,7 @@ def atomic_write_firmware_res(path, content, mtime_ns):
             os.unlink(temporary_path)
 
 
-def sync_firmware_res(target):
+def sync_firmware_res(target, filenames=None):
 
     if not SYNC_FIRMWARE_RES:
         return
@@ -701,7 +701,7 @@ def sync_firmware_res(target):
     if not isinstance(remote_files, dict):
         raise ValueError("Risposta firmwareRes del Radxa non valida")
 
-    for filename in FIRMWARE_RES_FILES:
+    for filename in (filenames or FIRMWARE_RES_FILES):
         local_path = os.path.join(CONFIG_DIR, filename)
         local_exists = os.path.isfile(local_path)
         remote_info = remote_files.get(filename)
@@ -788,6 +788,76 @@ def sync_firmware_res(target):
             flush=True
         )
 
+
+
+
+
+def collect_synchronization():
+
+    import base64
+
+    mode = get_mode()
+
+    with open(TOOLCHANGES_FILE, "rb") as f:
+        toolchanges = f.read(MAX_TOOLCHANGES_SIZE + 1)
+
+    validate_toolchanges(toolchanges)
+
+    with open(NOZZLE_HOURS_FILE, "r") as f:
+        lines = f.readlines()
+
+    nozzle_values = {}
+
+    for line in lines:
+        match = re.match(
+            r"^\s*(nozzle_seconds_t[0-3])\s*=\s*(\d+)\s*$",
+            line
+        )
+        if match:
+            key = match.group(1)
+            if key in nozzle_values:
+                raise ValueError("Duplicate nozzle hours variable: " + key)
+            nozzle_values[key] = int(match.group(2))
+
+    nozzle_values = validate_nozzle_hours(nozzle_values)
+
+    firmware_files = {}
+
+    for filename in FIRMWARE_RES_FILES:
+        local_path = os.path.join(CONFIG_DIR, filename)
+
+        if not os.path.isfile(local_path):
+            firmware_files[filename] = {
+                "exists": False,
+                "mtime_ns": None,
+                "data": None
+            }
+            continue
+
+        file_stat = os.stat(local_path)
+
+        with open(local_path, "rb") as f:
+            content = f.read(MAX_FIRMWARE_RES_SIZE + 1)
+
+        if len(content) > MAX_FIRMWARE_RES_SIZE:
+            raise ValueError("Firmware calibration file too large: " + filename)
+
+        firmware_files[filename] = {
+            "exists": True,
+            "mtime_ns": file_stat.st_mtime_ns,
+            "data": base64.b64encode(content).decode("ascii")
+        }
+
+    return {
+        "success": True,
+        "mode": mode,
+        "toolchanges": toolchanges.decode("utf-8"),
+        "nozzle_hours": nozzle_values,
+        "firmware_res": {
+            "success": True,
+            "files": firmware_files
+        }
+    }
 
 
 def change_mode(target):
@@ -1041,6 +1111,19 @@ class APIHandler(BaseHTTPRequestHandler):
             self.handle_mode("soc")
             return
 
+        # Synchronization state
+        if path == "/api/synchronization":
+
+            try:
+                self.send_json(200, collect_synchronization())
+            except Exception as e:
+                self.send_json(500, {
+                    "success": False,
+                    "error": str(e)
+                })
+
+            return
+
         # API status
         if path == "/api/status":
 
@@ -1157,6 +1240,62 @@ class APIHandler(BaseHTTPRequestHandler):
             return
 
         path = urlparse(self.path).path.rstrip("/")
+
+        # Manual synchronization
+        if path.startswith("/api/synchronization/"):
+
+            item = path.rsplit("/", 1)[-1]
+
+            if item not in (
+                "toolchanges",
+                "nozzle_hours",
+                "extruder",
+                "zoffset"
+            ):
+                self.send_json(404, {
+                    "success": False,
+                    "error": "Unknown synchronization item"
+                })
+                return
+
+            try:
+                mode = get_mode()
+
+                if mode not in ("soc", "tunneled"):
+                    raise RuntimeError("Printer mode is unknown")
+
+                if item == "toolchanges":
+                    sync_toolchanges(mode)
+
+                elif item == "nozzle_hours":
+                    sync_nozzle_hours(mode)
+
+                else:
+                    if not SYNC_FIRMWARE_RES:
+                        raise RuntimeError(
+                            "Firmware calibration synchronization is disabled"
+                        )
+
+                    filename = item + ".json"
+                    sync_firmware_res(mode, (filename,))
+
+                self.send_json(200, {
+                    "success": True,
+                    "item": item,
+                    "mode": mode
+                })
+
+            except Exception as e:
+                message = str(e)
+                status = 409 if "Conflitto" in message or "Conflict" in message else 500
+
+                self.send_json(status, {
+                    "success": False,
+                    "item": item,
+                    "error": message
+                })
+
+            return
 
         if path == "/api/mode/tunneled":
             self.handle_mode("tunneled")
