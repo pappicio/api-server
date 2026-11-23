@@ -468,6 +468,39 @@
             row(node, "Sync status", value[0], value[1]);
         };
 
+        const addSyncButton = (node, item, valid, equal) => {
+            const label = "Sync";
+            const canSync = hostAvailable && valid && !equal &&
+                (mode === "soc" || mode === "tunneled");
+
+            const button = el("button", "oc-sync-button", label);
+            button.type = "button";
+            button.disabled = !canSync;
+
+            button.addEventListener("click", async () => {
+                button.disabled = true;
+                button.textContent = "Syncing…";
+
+                try {
+                    const response = await fetch(`${SYNC_API}/${item}`, {
+                        method: "POST"
+                    });
+                    const result = await response.json();
+
+                    if (!response.ok || result.success !== true)
+                        throw new Error(result.error || `HTTP ${response.status}`);
+
+                    await refresh();
+                } catch (error) {
+                    window.alert(`Synchronization failed: ${error.message}`);
+                    button.disabled = !canSync;
+                    button.textContent = label;
+                }
+            });
+
+            node.appendChild(button);
+        };
+
         const toolchanges = value => {
             const parsed = parseToolchanges(value || "");
             return parsed
@@ -484,8 +517,11 @@
             hostAvailable && bTools ? "good" : "bad");
         row(toolsCard, "Creator 5", toolchanges(creator.toolchanges),
             aTools ? "good" : "bad");
-        status(toolsCard, !!aTools && !!bTools,
-            JSON.stringify(aTools) === JSON.stringify(bTools));
+        const toolsValid = !!aTools && !!bTools;
+        const toolsEqual = toolsValid &&
+            JSON.stringify(aTools) === JSON.stringify(bTools);
+        status(toolsCard, toolsValid, toolsEqual);
+        addSyncButton(toolsCard, "toolchanges", toolsValid, toolsEqual);
 
         const hoursCard = card("Nozzle Hours");
         const aHours = creator.nozzle_hours || {};
@@ -510,6 +546,7 @@
                 Number.isFinite(a) ? "good" : "bad", "oc-nozzle-hours-row");
         }
         status(hoursCard, hoursValid, hoursEqual);
+        addSyncButton(hoursCard, "nozzle_hours", hoursValid, hoursEqual);
 
         const calibrationSummary = (filename, info) => {
             const bytes = decodeFile(info);
@@ -572,51 +609,14 @@
                 (!a.exists || a.data === b.data);
 
             status(node, valid, equal);
+            addSyncButton(node, filename === "extruder.json" ? "extruder" : "zoffset",
+                valid, equal);
         };
 
         renderCalibrationCard("Extruder Calibration", "extruder.json");
         renderCalibrationCard("Z Offset Calibration", "zoffset.json");
 
 
-
-        const actions = el("div", "oc-sync-actions");
-        const canSync = hostAvailable && (mode === "soc" || mode === "tunneled");
-
-        for (const [item, label] of [
-            ["toolchanges", "Sync Toolchanges"],
-            ["nozzle_hours", "Sync Nozzle Hours"],
-            ["extruder", "Sync Extruder"],
-            ["zoffset", "Sync Z Offset"]
-        ]) {
-            const button = el("button", "oc-sync-button", label);
-            button.type = "button";
-            button.disabled = !canSync;
-
-            button.addEventListener("click", async () => {
-                button.disabled = true;
-                button.textContent = "Syncing…";
-
-                try {
-                    const response = await fetch(`${SYNC_API}/${item}`, {
-                        method: "POST"
-                    });
-                    const result = await response.json();
-
-                    if (!response.ok || result.success !== true)
-                        throw new Error(result.error || `HTTP ${response.status}`);
-
-                    await refresh();
-                } catch (error) {
-                    window.alert(`Synchronization failed: ${error.message}`);
-                    button.disabled = !canSync;
-                    button.textContent = label;
-                }
-            });
-
-            actions.appendChild(button);
-        }
-
-        block.appendChild(actions);
 
         if (!hostAvailable) {
             block.appendChild(el("p", "oc-sync-note",

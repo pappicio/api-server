@@ -323,6 +323,10 @@ body {
     margin: 12px 0 0;
 }
 
+.oc-sync-card .oc-sync-button {
+    margin-left: auto;
+}
+
 .oc-footer {
     grid-column: 1 / -1;
 }
