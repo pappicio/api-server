@@ -2,7 +2,7 @@
 {
   "id": "api-server",
   "name": "API Server",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Requires Script Runner on Creator 5. Mode Monitor must be installed on a Raspberry Pi or compatible remote Linux host to enable remote synchronization and External Host features. Local API functionality remains available without a remote host. Provides printer information, configuration and calibration APIs, SoC/Tunneled mode switching, synchronization, and remote host integration. May degrade system performance.",
   "scripts": {
     "install": "install.sh",
