@@ -222,7 +222,7 @@
 
 .oc-sync-button:disabled {
     opacity: .6;
-    cursor: wait;
+    cursor: not-allowed;
 }
 
 .oc-sync-note {
